@@ -1,13 +1,48 @@
 import numpy as np 
 
+import torch.nn as nn
+
 from dm_control import suite
 from dm_control.suite.wrappers import pixels
+from networks import Encoder
+
+
+
+class Dreamer:
+    def __init__(self, input_size: int, output_size: int, action_size: int, config):
+        self.config = config
+
+        # ----- NN Creation -----
+        self.encorder = Encoder()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 def train(env, nb_seeds: int = 5, ):
 
     # ------------- Generate and store sample of (action, state, reward) from random action -------------
-    action_space_spec = env.action_spec()
     time_step = env.reset()
     random_state_dataset = []
     for seed in range(nb_seeds):
@@ -19,6 +54,12 @@ def train(env, nb_seeds: int = 5, ):
             sample = (random_action, time_step.observation["pixels"], time_step.reward)
             random_state_dataset.append(sample)
         time_step = env.reset()
+
+    # NN's size parameters
+    input_size = random_state_dataset[0][1].flatten()
+    action_dim = 1
+
+    DreamerModel = Dreamer()
 
     return random_state_dataset
 

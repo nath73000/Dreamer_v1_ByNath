@@ -1,0 +1,27 @@
+environment_name: CartePole
+
+
+
+dreamer:
+
+  encorder:
+    depth: 16
+    stride: 2
+    padding: 1
+    kernel_size: 3
+    activation: ReLU
+
+  world_model:
+    hidden_size: 64
+    nb_layers:   3
+    activation: ReLU
+
+  actor:
+    hidden_size: 64
+    nb_layers:   3
+    activation: ReLU
+
+  critic:
+    hidden_size: 64
+    nb_layers:   3
+    activation: ReLU
