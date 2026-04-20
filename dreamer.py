@@ -4,18 +4,28 @@ import torch.nn as nn
 
 from dm_control import suite
 from dm_control.suite.wrappers import pixels
-from networks import Encoder
+from networks import Encoder, RecurrentModel, Prior, Posterior
 
 
 
 class Dreamer:
-    def __init__(self, observation_shape, config):
+    def __init__(self, observation_shape, action_size, config):
         self.config = config
         self.observation_shape = observation_shape
+        self.action_size = action_size
+
+        self.recurrent_size = config.recurrent_size
+        self.latent_size = config.latent_size
+        self.encoded_obs_size = config.encoded_obs_size
+
+        
+        
 
         # ----- NN Creation -----
-        self.encorder = Encoder(observation_shape, self.config.encoded_obs_size, config.encorder)
-
+        self.encorder        = Encoder(observation_shape, self.config.encoded_obs_size,                  config.encorder)
+        self.recurrent_model = RecurrentModel(self.config.recurrent_size, self.latent_size, action_size, config.recurrent_model)
+        self.prior           = Prior(self.recurrent_size, self.latent_size,                              config.prior)
+        self.posterior       = Posterior(self.recurrent_size+self.encoded_obs_size, self.latent_size,    config.posterior)
 
 
 

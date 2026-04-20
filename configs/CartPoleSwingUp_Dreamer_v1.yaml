@@ -5,24 +5,36 @@ environment_name: CartePole
 dreamer:
 
   encoded_obs_size: 1024
+  reccurent_size: 512
+  latent_size: 30
 
   encorder:
     depth: 16
     stride: 2
     padding: 1
     kernel_size: 3
-    activation: ReLU
+    activation: ELU
 
   recurrent_model:
     hidden_size: 64
-    activation: elu
+    activation: ELU
+
+  prior:
+    hidden_size: 100
+    nb_layers:   2
+    activation:  ELU
+
+  posterior:
+    hidden_size: 100
+    nb_layers:   2
+    activation:  ELU
 
   actor:
     hidden_size: 64
     nb_layers:   3
-    activation: ReLU
+    activation:   ELU
 
   critic:
     hidden_size: 64
     nb_layers:   3
-    activation: ReLU
+    activation:  ELU
