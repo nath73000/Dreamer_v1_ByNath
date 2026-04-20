@@ -1,6 +1,7 @@
 import os
 import yaml
 import attridict
+import torch.nn as nn
 
 # ------------------------------------------------------------- #
 def find_file(filename):
@@ -30,3 +31,20 @@ def get_env_properties(env):
     action_max           = action_spec.maximum
 
     return observation_shape, action_size, action_min, action_max
+
+
+def creat_sequential_model_1D(input_size, hidden_sizes, output_size, activation_function, finishWithActivation=False):
+    activation_function = getattr(nn, activation_function)
+    layers = []
+    current_input_size = input_size
+
+    for hidden_size in hidden_sizes:
+        layers.append(nn.Linear(current_input_size, hidden_size))
+        layers.append(activation_function)
+        current_input_size = hidden_size
+
+    layers.append(nn.Linear(current_input_size, output_size))
+    if finishWithActivation:
+        layers.append(activation_function)
+
+    return nn.Sequential(layers)

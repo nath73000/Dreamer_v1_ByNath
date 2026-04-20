@@ -9,11 +9,12 @@ from networks import Encoder
 
 
 class Dreamer:
-    def __init__(self, input_size: int, output_size: int, action_size: int, config):
+    def __init__(self, observation_shape, config):
         self.config = config
+        self.observation_shape = observation_shape
 
         # ----- NN Creation -----
-        self.encorder = Encoder()
+        self.encorder = Encoder(observation_shape, self.config.encoded_obs_size, config.encorder)
 
 
 
