@@ -15,26 +15,43 @@ dreamer:
     kernel_size: 3
     activation: ELU
 
+  decorder:
+    depth: 16
+    stride: 2
+    padding: 1
+    kernel_size: 3
+    activation: ELU
+
   recurrent_model:
-    hidden_size: 64
+    hidden_size: 400
     activation: ELU
 
   prior:
-    hidden_size: 100
+    hidden_size: 400
     nb_layers:   2
     activation:  ELU
 
   posterior:
-    hidden_size: 100
+    hidden_size: 400
     nb_layers:   2
     activation:  ELU
 
+  reward_model:
+    hidden_size: 400
+    nb_layers: 2
+    activation: ELU
+
+  continuation:
+    hidden_size: 400
+    nb_layers: 3
+    activation: ELU
+
   actor:
-    hidden_size: 64
+    hidden_size: 400
     nb_layers:   3
     activation:   ELU
 
   critic:
-    hidden_size: 64
+    hidden_size: 400
     nb_layers:   3
     activation:  ELU

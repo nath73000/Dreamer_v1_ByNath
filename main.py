@@ -22,4 +22,4 @@ if __name__ == "__main__":
 
     print(observation_shape, action_size, action_min, action_max)
 
-    #dreamer = Dreamer()
+    dreamer = Dreamer(observation_shape, action_size, config.dreamer)

@@ -4,7 +4,7 @@ import torch.nn as nn
 
 from dm_control import suite
 from dm_control.suite.wrappers import pixels
-from networks import Encoder, RecurrentModel, Prior, Posterior
+from networks import Encoder, Decoder, RecurrentModel, Prior, Posterior, RewardModel, ContinueModel, Actor, Critic
 
 
 
@@ -17,18 +17,27 @@ class Dreamer:
         self.recurrent_size = config.recurrent_size
         self.latent_size = config.latent_size
         self.encoded_obs_size = config.encoded_obs_size
-
-        
-        
+        self.full_state_size = self.recurrent_size + self.latent_size
 
         # ----- NN Creation -----
         self.encorder        = Encoder(observation_shape, self.config.encoded_obs_size,                  config.encorder)
+        self.decoder         = Decoder(self.encoded_obs_size, self.observation_shape,                    config.decoder)
         self.recurrent_model = RecurrentModel(self.config.recurrent_size, self.latent_size, action_size, config.recurrent_model)
         self.prior           = Prior(self.recurrent_size, self.latent_size,                              config.prior)
         self.posterior       = Posterior(self.recurrent_size+self.encoded_obs_size, self.latent_size,    config.posterior)
+        self.reward_model    = RewardModel(self.full_state_size,                                         config.reward_model)
+        self.continue_model  = ContinueModel(self.full_state_size,                                       config.continuation)
+        self.actor           = Actor(self.full_state_size, self.action_size,                             config.actor)
+        self.critic          = Critic(self.full_state_size,                                              config.critic)
 
+    
+    def world_model_training(self, data):
+        encorded_observation = 
+        return
+    
 
-
+    def behavior_traning(self):
+        return
 
 
 

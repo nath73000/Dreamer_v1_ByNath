@@ -1,6 +1,10 @@
 import torch.nn as nn
 import torch 
+from torch.distributions import Normal, Bernoulli, Independent, TransformedDistribution
+from torch.distributions.transforms import TanhTransform
+
 from utils import creat_sequential_model_1D
+
 
 
 # -------------------------- Neural Network definition --------------------------
@@ -27,6 +31,27 @@ class Encoder(nn.Module):
         return self.convolutionnal_net(x)
 
 
+class Decoder(nn.Module):
+    def __init__(self, inputSize, outputShape, config):
+        super().__init__()
+
+        self.config = config
+        self.height, self.width, self.channels = outputShape
+        activation = getattr(nn, self.config.activation)()
+
+        self.network = nn.Sequential(
+            nn.Linear(inputSize, self.config.depth*32),
+            nn.Unflatten(1, (self.config.depth*32, 1)),
+            nn.Unflatten(2, (1, 1)),
+            nn.ConvTranspose2d(self.config.depth*32, self.config.depth*4, self.config.kernelSize,     self.config.stride, self.config.padding), activation,
+            nn.ConvTranspose2d(self.config.depth*4,  self.config.depth*2, self.config.kernelSize,     self.config.stride, self.config.padding), activation,
+            nn.ConvTranspose2d(self.config.depth*2,  self.config.depth*1, self.config.kernelSize + 1, self.config.stride, self.config.padding), activation,
+            nn.ConvTranspose2d(self.config.depth*1,  self.channels,       self.config.kernelSize + 1, self.config.stride, self.config.padding))
+
+    def forward(self, x):
+        return self.network(x)
+
+
 class RecurrentModel(nn.Module):
     def __init__(self, recurrent_size, latent_size, action_size, config):
         super().__init__()
@@ -51,12 +76,11 @@ class Prior(nn.Module):
         self.network = creat_sequential_model_1D(input_size, [self.config.hidden_size] * self.config.nb_layers, 2 * lattent_size, self.activation)
 
     def forward(self, recurrent_state):
-        # recurrent_state : (B, recurrent_size)
-        out = self.network(recurrent_state)             # (B, 2*latent_size)
-        mean, std = torch.chunk(out, 2, dim=-1)         # chacun (B, latent_size)
-        std = torch.nn.functional.softplus(std) + 0.1   # std > 0, évite collapse
-        dist = torch.distributions.Normal(mean, std)    # distribution gaussienne
-        sample = dist.rsample()                         # (B, latent_size)
+        out = self.network(recurrent_state)
+        mean, std = torch.chunk(out, 2, dim=-1)
+        std = torch.nn.functional.softplus(std) + 0.1
+        dist = torch.distributions.Normal(mean, std)
+        sample = dist.rsample()
         return dist, sample
     
 
@@ -69,42 +93,62 @@ class Posterior(nn.Module):
         self.network = creat_sequential_model_1D(input_size, [self.config.hidden_size] * self.config.nb_layers, 2 * lattent_size, self.activation)
 
     def forward(self, recurrent_state_plus_encoded_obs):
-        # recurrent_state : (B, recurrent_size)
-        out = self.network(recurrent_state_plus_encoded_obs)             # (B, 2*latent_size)
-        mean, std = torch.chunk(out, 2, dim=-1)         # chacun (B, latent_size)
-        std = torch.nn.functional.softplus(std) + 0.1   # std > 0, évite collapse
-        dist = torch.distributions.Normal(mean, std)    # distribution gaussienne
-        sample = dist.rsample()                         # (B, latent_size)
+        out = self.network(recurrent_state_plus_encoded_obs)
+        mean, std = torch.chunk(out, 2, dim=-1)
+        std = torch.nn.functional.softplus(std) + 0.1
+        dist = torch.distributions.Normal(mean, std)
+        sample = dist.rsample()
         return dist, sample
 
 
-class ActionModel(nn.Module):
-    def __init__(self, input_size: int, hidden_size: int, output_size: int):
+class RewardModel(nn.Module):
+    def __init__(self, input_size, config):
         super().__init__()
+        self.config = config
 
-        self.network = nn.Sequential(
-            nn.Linear(in_features=input_size, out_features=hidden_size),
-            nn.ReLU(),
-            nn.Linear(in_features=hidden_size, out_features=hidden_size),
-            nn.ReLU(),
-            nn.Linear(in_features=hidden_size, out_features=output_size)
-        )
+        self.network = creat_sequential_model_1D(input_size, [self.config.hidden_size]*self.config.nb_layers, 2, self.config.activation)
 
-    def forward(self, X):
-        return self.network(X)
+    def forward(self, x):
+        mean, log_std = self.network(x).chunk(2, dim=-1)
+        return Normal(mean.squeeze(-1), torch.exp(log_std).squeeze(-1))
 
 
-class ValueModel(nn.Module):
-    def __init__(self, input_size: int, hidden_size: int, output_size: int):
+class ContinueModel(nn.Module):
+    def __init__(self, inputSize, config):
         super().__init__()
+        self.config = config
+        self.network = creat_sequential_model_1D(inputSize, [self.config.hidden_size]*self.config.nb_layers, 1, self.config.activation)
 
-        self.network = nn.Sequential(
-            nn.Linear(in_features=input_size, out_features=hidden_size),
-            nn.ReLU(),
-            nn.Linear(in_features=hidden_size, out_features=hidden_size),
-            nn.ReLU(),
-            nn.Linear(in_features=hidden_size, out_features=output_size)
-        )
+    def forward(self, x):
+        return Bernoulli(logits=self.network(x).squeeze(-1))
 
-    def forward(self, X):
-        return self.network(X)
+ 
+class Actor(nn.Module):
+    def __init__(self, input_size, action_size, config):
+        super().__init__()
+        self.config = config
+        self.action_size = action_size
+
+        self.network = creat_sequential_model_1D(input_size, [self.config.hidden_size]*self.config.nb_layers, 2 * action_size, self.config.activation)
+
+    def forward(self, x):
+        out = self.network(x)
+        mean, std = out.chunk(2, dim=-1)
+        mean = self.mean_scale * torch.tanh(mean / self.mean_scale)
+        std  = torch.nn.functional.softplus(std + self.init_std) + self.min_std
+
+        base = Independent(Normal(mean, std), 1)          # event_dim = action_size
+        dist = TransformedDistribution(base, TanhTransform(cache_size=1))
+        return dist
+
+
+class Critic(nn.Module):
+    def __init__(self, input_size, config):
+        super().__init__()
+        self.config = config 
+
+        self.network = creat_sequential_model_1D(input_size, [self.config.hidden_size]*self.config.nb_layers, 1, self.config.activation)
+
+    def forward(self, x):
+        mean = self.network(x).squeeze(-1)
+        return Normal(mean, 1.0)
