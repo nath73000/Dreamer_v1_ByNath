@@ -32,7 +32,7 @@ class Dreamer:
 
     
     def world_model_training(self, data):
-        encorded_observation = 
+
         return
     
 

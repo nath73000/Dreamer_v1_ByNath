@@ -55,3 +55,6 @@ dreamer:
     hidden_size: 400
     nb_layers:   3
     activation:  ELU
+
+  buffer:
+    capacity: 50000

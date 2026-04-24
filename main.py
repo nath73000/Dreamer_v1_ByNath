@@ -21,5 +21,7 @@ if __name__ == "__main__":
     config = load_config("CartPoleSwingUp_Dreamer_v1")
 
     print(observation_shape, action_size, action_min, action_max)
+    print(observation_shape)
+    print(*observation_shape)
 
-    dreamer = Dreamer(observation_shape, action_size, config.dreamer)
+    #dreamer = Dreamer(observation_shape, action_size, config.dreamer)
