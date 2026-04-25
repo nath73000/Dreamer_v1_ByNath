@@ -5,16 +5,11 @@ from dm_control import suite
 from dm_control.suite.wrappers import pixels
 
 
-
-
-
-
-if __name__ == "__main__":
-
+def main(config_file):
     env_train    = suite.load(domain_name="cartpole", task_name="swingup")
     env_train    = pixels.Wrapper(env=env_train, render_kwargs={"height": 64, "width": 64, "camera_id": 0})
-    env_test     = suite.load(domain_name="cartpole", task_name="swingup")
-    env_test     = pixels.Wrapper(env=env_test, render_kwargs={"height": 64, "width": 64, "camera_id": 0})
+    env_eval     = suite.load(domain_name="cartpole", task_name="swingup")
+    env_eval     = pixels.Wrapper(env=env_eval, render_kwargs={"height": 64, "width": 64, "camera_id": 0})
 
     observation_shape, action_size, action_min, action_max = get_env_properties(env=env_train)
 
@@ -24,4 +19,14 @@ if __name__ == "__main__":
     print(observation_shape)
     print(*observation_shape)
 
-    #dreamer = Dreamer(observation_shape, action_size, config.dreamer)
+    dreamer = Dreamer(observation_shape, action_size, config.dreamer)
+
+    dreamer.environement_interaction(env_train, config.nb_episodes_before_start, config.seed)
+
+if __name__ == "__main__":
+    main()
+    
+
+    
+
+    

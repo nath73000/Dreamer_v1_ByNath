@@ -1,5 +1,6 @@
 environment_name: CartePole
-
+nb_episodes_before_start: 5
+seed: 13
 
 
 dreamer:
@@ -7,6 +8,9 @@ dreamer:
   encoded_obs_size: 1024
   reccurent_size: 512
   latent_size: 30
+  world_model_learning_rate: 2e-4
+  actor_learning_rate      : 4e-5
+  critic_learning_rate     : 1e-4
 
   encorder:
     depth: 16
