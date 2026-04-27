@@ -23,6 +23,13 @@ def main(config_file):
 
     dreamer.environement_interaction(env_train, config.nb_episodes_before_start, config.seed)
 
+    iterations_nb = config.gradient_steps // config.replay_ratio 
+    for _ in range(iterations_nb):
+        for _ in range(config.replay_ratio):
+            sampled_data = dreamer.buffer.sample(dreamer.config.batch_size, dreamer.config.batch_length)
+            
+
+
 if __name__ == "__main__":
     main()
     

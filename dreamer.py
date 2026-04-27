@@ -2,6 +2,7 @@ import numpy as np
 
 import torch
 import torch.nn as nn
+from torch.distributions import kl_divergence, Independent, OneHotCategoricalStraightThrough, Normal
 
 from dm_control import suite
 from dm_control.suite.wrappers import pixels
@@ -52,10 +53,53 @@ class Dreamer:
         self.total_gradient_steps = 0
 
 
-
-
-    
     def world_model_training(self, data):
+        encoded_observation = self.encorder(data.observations.view(-1, *self.observation_shape)).view(self.config.batch_size, self.config.batch_length, -1)
+        previous_recurrent_state = torch.zeros(self.config.batch_size, self.recurrent_size,  device=self.device)
+        previous_latent_state    = torch.zeros(self.config.batch_size, self.latent_size,     device=self.device)
+
+        recurrent_states, priors_logits, posteriors, posteriors_logits = [], [], [], []
+        for t in range(1, self.config.batch_length):
+            recurrent_state             = self.recurrent_model(previous_recurrent_state, previous_latent_state, data.actions[:, t-1])
+            _, prior_logits             = self.prior(recurrent_state)
+            posterior, posterior_logits = self.posterior(torch.cat(recurrent_state, encoded_observation[:, t], -1))
+
+            recurrent_states.append(recurrent_state)
+            priors_logits.append(prior_logits)
+            posteriors.append(posterior)
+            posteriors_logits.append(posterior_logits)
+
+            previous_recurrent_state = recurrent_state
+            previous_latent_state    = posterior
+
+        recurrent_states = torch.stack(recurrent_state,              dim=1)
+        prior_logits =     torch.stack(prior_logits,                 dim=1)
+        posteriors =       torch.stack(posteriors,                   dim=1)
+        posterior_logits = torch.stack(posterior_logits,             dim=1)
+        full_states =       torch.cat((recurrent_states, posteriors), dim=-1)
+
+        reconstruction_means         =  self.decoder(full_states.view(-1, self.full_state_size)).view(self.config.batch_size, self.config.batch_length-1, *self.observation_shape)
+        reconstruction_distribution  =  Independent(Normal(reconstruction_means, 1), len(self.observation_shape))
+        reconstruction_loss          = -reconstruction_distribution.log_prob(data.observations[:, 1:]).mean()
+
+        reward_distribution  =  self.rewardPredictor(full_states)
+        reward_loss          = -reward_distribution.log_prob(data.rewards[:, 1:].squeeze(-1)).mean()
+
+        prior_distribution        = Independent(OneHotCategoricalStraightThrough(logits=priors_logits              ), 1)
+        prior_distribution_sg     = Independent(OneHotCategoricalStraightThrough(logits=priors_logits.detach()     ), 1)
+        posterior_distribution    = Independent(OneHotCategoricalStraightThrough(logits=posteriors_logits          ), 1)
+        posterior_distribution_sg = Independent(OneHotCategoricalStraightThrough(logits=posteriors_logits.detach() ), 1)
+
+        prior_loss       = kl_divergence(posterior_distribution_sg, prior_distribution  )
+        posterior_loss   = kl_divergence(posterior_distribution  , prior_distribution_sg)
+        free_nats        = torch.full_like(prior_loss, self.config.free_nats)
+
+        prior_loss       = self.config.beta_prior*torch.maximum(prior_loss, free_nats)
+        posterior_loss   = self.config.beta_posterior*torch.maximum(posterior_loss, free_nats)
+        kl_loss          = (prior_loss + posterior_loss).mean()
+
+        world_model_loss =  reconstruction_loss + reward_loss + kl_loss # I think that the reconstruction loss is relatively a bit too high (11k) 
+
         return
     
 
