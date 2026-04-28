@@ -1,16 +1,40 @@
 environment_name: CartePole
-nb_episodes_before_start: 5
+run_name: debug
 seed: 13
 
+nb_episodes_before_start: 5
+
+replay_ratio: 100
+gradient_steps: 60000
+checkpoint_interval: 
+save_checkpoints: 
+checkpointToLoad: 50k
+num_evaluation_episodes: 
+num_interaction_episodes:
 
 dreamer:
+  batch_size: 32
+  batch_length: 64
+  imagination_horizon: 15
 
   encoded_obs_size: 1024
   reccurent_size: 512
   latent_size: 30
+  use_continuation_prediction: False
   world_model_learning_rate: 2e-4
   actor_learning_rate      : 4e-5
   critic_learning_rate     : 1e-4
+  gradient_norm_type: 2
+  gradient_clip: 100
+  imagination_horizon: 16
+
+  entropy_scale: 0.0003
+  gradient_clip: 100
+  gradient_norm_type: 2
+
+  free_nats: 1
+  beta_prior: 1.0
+  beta_posterior: 0.1
 
   encorder:
     depth: 16
@@ -62,3 +86,10 @@ dreamer:
 
   buffer:
     capacity: 50000
+
+
+forlder_names:
+  metrics_folder: metrics
+  plots_folder: plots
+  checkpoints_folder: checkpoint
+  videos_folder: videos

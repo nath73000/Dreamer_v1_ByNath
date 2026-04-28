@@ -7,8 +7,8 @@ from torch.distributions import kl_divergence, Independent, OneHotCategoricalStr
 from dm_control import suite
 from dm_control.suite.wrappers import pixels
 from networks import Encoder, Decoder, RecurrentModel, Prior, Posterior, RewardModel, ContinueModel, Actor, Critic
+from utils import computeLambdaValues, Moments
 from buffer import ReplayBuffer
-
 
 
 class Dreamer:
@@ -45,8 +45,10 @@ class Dreamer:
                                        list(self.continue_model.parameters()))
         
         self.world_model_optimizer = torch.optim.Adam(self.world_model_parameters, lr=self.config.world_model_learning_rate)
-        self.actor_optimiwer       = torch.optim.Adam(self.actor.parameters(),     lr=self.config.actor_learning_rate)
-        self.critic_optimiwer      = torch.optim.Adam(self.critic.parameters(),    lr=self.config.critic_learning_rate)
+        self.actor_optimizer       = torch.optim.Adam(self.actor.parameters(),     lr=self.config.actor_learning_rate)
+        self.critic_optimizer      = torch.optim.Adam(self.critic.parameters(),    lr=self.config.critic_learning_rate)
+
+        self.valueMoments = Moments(device)
 
         self.total_episodes       = 0
         self.total_env_steps      = 0
@@ -100,11 +102,72 @@ class Dreamer:
 
         world_model_loss =  reconstruction_loss + reward_loss + kl_loss # I think that the reconstruction loss is relatively a bit too high (11k) 
 
-        return
+        if self.config.use_continuation_prediction:
+            continue_distribution = self.continuePredictor(full_states)
+            continue_loss         = nn.BCELoss(continue_distribution.probs, 1 - data.dones[:, 1:])
+            world_model_loss     += continue_loss.mean()
+
+        self.world_model_optimizer.zero_grad()
+        world_model_loss.backward()
+        nn.utils.clip_grad_norm_(self.world_model_parameters, self.config.gradient_clip, norm_type=self.config.gradient_norm_type)
+        self.world_model_optimizer.step()
+
+        klLoss_shift_for_graphing = (self.config.beta_prior + self.config.beta_posterior)*self.config.free_nats
+        metrics = {
+            "world_model_loss"        : world_model_loss.item() - klLoss_shift_for_graphing,
+            "reconstruction_loss"     : reconstruction_loss.item(),
+            "reward_predictor_loss"   : reward_loss.item(),
+            "kl_loss"                 : kl_loss.item() - klLoss_shift_for_graphing}
+        return full_states.view(-1, self.full_state_size).detach(), metrics
     
 
-    def behavior_traning(self):
-        return
+    def behavior_training(self, full_state):
+        recurrent_state, latent_state = torch.split(full_state, (self.recurrent_size, self.latent_size), -1)
+        full_states, logprobs, entropies = [], [], []
+        for _ in range(self.config.imagination_horizon):
+            action, logprob, entropy = self.actor(full_state.detach(), training=True)
+            recurrent_state = self.recurrent_model(recurrent_state, latent_state, action)
+            latent_state, _ = self.prior(recurrent_state)
+
+            full_state = torch.cat((recurrent_state, latent_state), -1)
+            full_states.append(full_state)
+            logprobs.append(logprob)
+            entropies.append(entropy)
+        full_states  = torch.stack(full_states,    dim=1) # (batchSize*batchLength, imaginationHorizon, recurrentSize + latentLength*latentClasses)
+        logprobs     = torch.stack(logprobs[1:],   dim=1) # (batchSize*batchLength, imaginationHorizon-1)
+        entropies    = torch.stack(entropies[1:],  dim=1) # (batchSize*batchLength, imaginationHorizon-1)
+        
+        predicted_rewards = self.reward_model(full_states[:, :-1]).mean
+        values            = self.critic(full_states).mean
+        continues         = self.continue_model(full_states).mean if self.config.use_continuation_prediction else torch.full_like(predicted_rewards, self.config.discount)
+        lambda_values     = computeLambdaValues(predicted_rewards, values, continues, self.config.lambda_)
+
+        _, inverse_scale = self.valueMoments(lambda_values)
+        advantages       = (lambda_values - values[:, :-1])/inverse_scale
+
+        actor_loss = -torch.mean(advantages.detach()*logprobs + self.config.entropy_scale*entropies)
+
+        self.actor_optimizer.zero_grad()
+        actor_loss.backward()
+        nn.utils.clip_grad_norm_(self.actor.parameters(), self.config.gradient_clip, norm_type=self.config.gradient_normType)
+        self.actor_optimizer.step()
+
+        value_distributions  =  self.critic(full_states[:, :-1].detach())
+        critic_loss          = -torch.mean(value_distributions.log_prob(lambda_values.detach()))
+
+        self.critic_optimizer.zero_grad()
+        critic_loss.backward()
+        nn.utils.clip_grad_norm_(self.critic.parameters(), self.config.gradient_clip, norm_type=self.config.gradient_normType)
+        self.critic_optimizer.step()
+
+        metrics = {
+            "actor_loss"     : actor_loss.item(),
+            "critic_loss"    : critic_loss.item(),
+            "entropies"     : entropies.mean().item(),
+            "logprobs"      : logprobs.mean().item(),
+            "advantages"    : advantages.mean().item(),
+            "criticValues"  : values.mean().item()}
+        return metrics
 
 
     @torch.no_grad()
