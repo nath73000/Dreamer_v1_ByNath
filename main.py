@@ -1,30 +1,58 @@
 from utils import load_config, get_env_properties, plotMetrics, saveLossesToCSV
 from dreamer import Dreamer
 
-from dm_control import suite
-from dm_control.suite.wrappers import pixels
+import argparse
 import os
+import torch
 
 
-def main(config_file):
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "-c",
+        "--config",
+        default="CartPoleSwingUp_Dreamer_v1",
+        help="Nom du fichier config YAML, avec ou sans .yaml",
+    )
+    return parser.parse_args()
+
+
+def main(config):
+    try:
+        from dm_control import suite
+        from dm_control.suite.wrappers import pixels
+    except ModuleNotFoundError as exc:
+        raise ModuleNotFoundError("dm-control is required to run the training environment.") from exc
+
+    device = torch.device(getattr(config, "device", "cuda" if torch.cuda.is_available() else "cpu"))
+
     env_train    = suite.load(domain_name="cartpole", task_name="swingup")
     env_train    = pixels.Wrapper(env=env_train, render_kwargs={"height": 64, "width": 64, "camera_id": 0})
     env_eval     = suite.load(domain_name="cartpole", task_name="swingup")
     env_eval     = pixels.Wrapper(env=env_eval, render_kwargs={"height": 64, "width": 64, "camera_id": 0})
 
-    observation_shape, action_size, action_min, action_max = get_env_properties(env=env_train)
+    observation_shape, action_size, _, _ = get_env_properties(env=env_train)
 
-    config = load_config("CartPoleSwingUp_Dreamer_v1")
     runName                   = f"{config.environment_name}_{config.run_name}"
-    checkpoint_to_load        = os.path.join(config.folder_names.checkpoints_folder, f"{runName}_{config.checkpoint_to_load}")
     metrics_file_name         = os.path.join(config.folder_names.metrics_folder,        runName)
     plot_file_name            = os.path.join(config.folder_names.plots_folder,          runName)
     checkpoint_filename_base  = os.path.join(config.folder_names.checkpoints_folder,    runName)
     video_filename_base       = os.path.join(config.folder_names.videos_folder,         runName)
 
-    dreamer = Dreamer(observation_shape, action_size, config.dreamer)
+    for folder in config.folder_names.values():
+        os.makedirs(folder, exist_ok=True)
 
-    dreamer.environement_interaction(env_train, config.nb_episodes_before_start, config.seed)
+    dreamer = Dreamer(observation_shape, action_size, config.dreamer, device)
+
+    if config.checkpoint_to_load:
+        checkpoint_to_load = os.path.join(config.folder_names.checkpoints_folder, f"{runName}_{config.checkpoint_to_load}")
+        checkpoint_path = f"{checkpoint_to_load}.pt"
+        if os.path.isfile(checkpoint_path):
+            dreamer.load_checkpoint(checkpoint_path)
+        else:
+            print(f"Checkpoint not found, starting from scratch: {checkpoint_path}")
+
+    dreamer.environment_interaction(env_train, config.nb_episodes_before_start, config.seed)
 
     iterations_nb = config.gradient_steps // config.replay_ratio 
     for _ in range(iterations_nb):
@@ -34,7 +62,7 @@ def main(config_file):
             behavior_metrics                    = dreamer.behavior_training(initial_states)
             dreamer.total_gradient_steps += 1
 
-            if dreamer.total_gradient_steps % config.checkpoint_interval == 0 and config.save_checkpoints:
+            if config.save_checkpoints and config.checkpoint_interval and dreamer.total_gradient_steps % config.checkpoint_interval == 0:
                 suffix = f"{dreamer.total_gradient_steps/1000:.0f}k"
                 dreamer.save_checkpoint(f"{checkpoint_filename_base}_{suffix}")
                 evaluation_score = dreamer.environment_interaction(env_eval, config.num_evaluation_episodes, seed=config.seed, evaluation=True, save_video=True, filename=f"{video_filename_base}_{suffix}")
@@ -48,10 +76,6 @@ def main(config_file):
 
 
 if __name__ == "__main__":
-    
-    main()
-    
-
-    
-
-    
+    args = parse_args()
+    config = load_config(args.config)
+    main(config)

@@ -1,49 +1,50 @@
-environment_name: CartePole
+environment_name: CartPoleSwingUp
 run_name: debug
 seed: 13
-
-nb_episodes_before_start: 5
+device: cpu
 
 replay_ratio: 100
 gradient_steps: 60000
-checkpoint_interval: 
-save_checkpoints: 
-checkpointToLoad: 50k
-num_evaluation_episodes: 
-num_interaction_episodes:
+checkpoint_interval: 2000
+save_checkpoints: True
+checkpoint_to_load:
+save_metrics: True
+
+nb_episodes_before_start: 5
+num_evaluation_episodes: 1
+num_interaction_episodes: 1
 
 dreamer:
   batch_size: 32
   batch_length: 64
-  imagination_horizon: 15
-
-  encoded_obs_size: 1024
-  reccurent_size: 512
-  latent_size: 30
-  use_continuation_prediction: False
-  world_model_learning_rate: 2e-4
-  actor_learning_rate      : 4e-5
-  critic_learning_rate     : 1e-4
-  gradient_norm_type: 2
-  gradient_clip: 100
   imagination_horizon: 16
 
-  entropy_scale: 0.0003
-  gradient_clip: 100
+  encoded_obs_size: 1024
+  recurrent_size: 512
+  latent_size: 30
+  use_continuation_prediction: False
+  world_model_learning_rate: 0.0002
+  actor_learning_rate      : 0.00004
+  critic_learning_rate     : 0.0001
+  discount: 0.99
+  lambda_: 0.95
   gradient_norm_type: 2
+  gradient_clip: 100
+
+  entropy_scale: 0.0003
 
   free_nats: 1
   beta_prior: 1.0
   beta_posterior: 0.1
 
-  encorder:
+  encoder:
     depth: 16
     stride: 2
     padding: 1
     kernel_size: 3
     activation: ELU
 
-  decorder:
+  decoder:
     depth: 16
     stride: 2
     padding: 1
@@ -78,6 +79,9 @@ dreamer:
     hidden_size: 400
     nb_layers:   3
     activation:   ELU
+    mean_scale: 5.0
+    init_std: 5.0
+    min_std: 0.0001
 
   critic:
     hidden_size: 400
@@ -88,7 +92,7 @@ dreamer:
     capacity: 50000
 
 
-forlder_names:
+folder_names:
   metrics_folder: metrics
   plots_folder: plots
   checkpoints_folder: checkpoint
