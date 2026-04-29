@@ -35,22 +35,45 @@ class ReplayBuffer(object):
 
     def sample(self, batch_size, batch_length):
         current_size = len(self)
-        if current_size < batch_length:
+        transition_length = batch_length - 1
+        if transition_length < 1:
+            raise ValueError(f"batch_length must be at least 2, got {batch_length}.")
+        if current_size < transition_length:
             raise ValueError(f"Replay buffer has {current_size} transitions, but batch_length={batch_length}.")
 
         chronological_indices = np.arange(current_size)
         if self.full:
             chronological_indices = (chronological_indices + self.buffer_index) % self.capacity
 
-        max_start_index = current_size - batch_length + 1
-        replace = max_start_index < batch_size
-        start_indices = np.random.choice(max_start_index, batch_size, replace=replace)
+        max_start_index = current_size - transition_length + 1
+        done_flags = self.dones[chronological_indices].reshape(-1).astype(bool)
+        valid_start_indices = []
+        for start_index in range(max_start_index):
+            # The final sampled transition may be terminal because its next
+            # observation is stored explicitly. Earlier terminal transitions
+            # would make the following actions belong to a new episode.
+            if transition_length > 1 and done_flags[start_index:start_index + transition_length - 1].any():
+                continue
+            valid_start_indices.append(start_index)
+        if not valid_start_indices:
+            raise ValueError(
+                f"Replay buffer has no episode chunk long enough for batch_length={batch_length}."
+            )
 
-        sample_indices = np.empty((batch_size, batch_length), dtype=np.int64)
+        replace = len(valid_start_indices) < batch_size
+        start_indices = np.random.choice(valid_start_indices, batch_size, replace=replace)
+
+        sample_indices = np.empty((batch_size, transition_length), dtype=np.int64)
         for i in range(batch_size):
-            sample_indices[i] = chronological_indices[start_indices[i] + np.arange(batch_length)]
+            sample_indices[i] = chronological_indices[start_indices[i] + np.arange(transition_length)]
 
-        observations =      torch.as_tensor(self.observations[sample_indices],      device=self.device)
+        first_observations = self.observations[sample_indices[:, :1]]
+        observations = np.concatenate(
+            (first_observations, self.next_observations[sample_indices]),
+            axis=1,
+        )
+
+        observations =      torch.as_tensor(observations,                            device=self.device)
         next_observations = torch.as_tensor(self.next_observations[sample_indices], device=self.device)
         actions =           torch.as_tensor(self.actions[sample_indices],           device=self.device)
         rewards =           torch.as_tensor(self.rewards[sample_indices],           device=self.device)

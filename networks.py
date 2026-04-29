@@ -1,3 +1,5 @@
+import math
+
 import torch.nn as nn
 import torch 
 from torch.distributions import Normal, Bernoulli, Independent, TransformedDistribution
@@ -118,11 +120,11 @@ class RewardModel(nn.Module):
         super().__init__()
         self.config = config
 
-        self.network = creat_sequential_model_1D(input_size, [self.config.hidden_size]*self.config.nb_layers, 2, self.config.activation)
+        self.network = creat_sequential_model_1D(input_size, [self.config.hidden_size]*self.config.nb_layers, 1, self.config.activation)
 
     def forward(self, x):
-        mean, log_std = self.network(x).chunk(2, dim=-1)
-        return Normal(mean.squeeze(-1), torch.exp(log_std).squeeze(-1))
+        mean = self.network(x).squeeze(-1)
+        return Normal(mean, torch.ones_like(mean))
 
 
 class ContinueModel(nn.Module):
@@ -142,6 +144,7 @@ class Actor(nn.Module):
         self.action_size = int(action_size)
         self.mean_scale = getattr(config, "mean_scale", 5.0)
         self.init_std = getattr(config, "init_std", 5.0)
+        self.raw_init_std = math.log(math.exp(self.init_std) - 1.0)
         self.min_std = getattr(config, "min_std", 1e-4)
 
         self.network = creat_sequential_model_1D(input_size, [self.config.hidden_size]*self.config.nb_layers, 2 * self.action_size, self.config.activation)
@@ -150,7 +153,7 @@ class Actor(nn.Module):
         out = self.network(x)
         mean, std = out.chunk(2, dim=-1)
         mean = self.mean_scale * torch.tanh(mean / self.mean_scale)
-        std  = torch.nn.functional.softplus(std + self.init_std) + self.min_std
+        std  = torch.nn.functional.softplus(std + self.raw_init_std) + self.min_std
 
         base = Independent(Normal(mean, std), 1)          # event_dim = action_size
         dist = TransformedDistribution(base, TanhTransform(cache_size=1))

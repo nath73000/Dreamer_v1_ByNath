@@ -61,6 +61,7 @@ def main(config):
             initial_states, world_model_metrics = dreamer.world_model_training(sampled_data)
             behavior_metrics                    = dreamer.behavior_training(initial_states)
             dreamer.total_gradient_steps += 1
+            print(f"Gradient Steps: {dreamer.total_gradient_steps}")
 
             if config.save_checkpoints and config.checkpoint_interval and dreamer.total_gradient_steps % config.checkpoint_interval == 0:
                 suffix = f"{dreamer.total_gradient_steps/1000:.0f}k"
@@ -79,3 +80,9 @@ if __name__ == "__main__":
     args = parse_args()
     config = load_config(args.config)
     main(config)
+
+    # plotMetrics(
+    # "metrics/CartPoleSwingUp_debug",
+    # savePath="plots/CartPoleSwingUp_debug",
+    # title="CartPoleSwingUp",
+    # )

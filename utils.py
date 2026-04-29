@@ -113,11 +113,25 @@ def saveLossesToCSV(filename, metrics):
         os.makedirs(directory, exist_ok=True)
 
     fileAlreadyExists = os.path.isfile(csv_path)
-    with open(csv_path, mode='a', newline='') as file:
-        writer = csv.writer(file)
-        if not fileAlreadyExists:
-            writer.writerow(metrics.keys())
-        writer.writerow(metrics.values())
+    fieldnames = list(metrics.keys())
+    existing_rows = []
+    rewrite_file = False
+    if fileAlreadyExists:
+        with open(csv_path, newline='') as file:
+            reader = csv.DictReader(file)
+            existing_fieldnames = reader.fieldnames or []
+            if existing_fieldnames != fieldnames:
+                fieldnames = list(dict.fromkeys(existing_fieldnames + fieldnames))
+                existing_rows = list(reader)
+                rewrite_file = True
+
+    with open(csv_path, mode='w' if rewrite_file else 'a', newline='') as file:
+        writer = csv.DictWriter(file, fieldnames=fieldnames)
+        if not fileAlreadyExists or rewrite_file:
+            writer.writeheader()
+        if rewrite_file:
+            writer.writerows(existing_rows)
+        writer.writerow(metrics)
 
 
 def plotMetrics(filename, title="", savePath="metricsPlot", window=10):
