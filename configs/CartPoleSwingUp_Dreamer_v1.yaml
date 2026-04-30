@@ -7,7 +7,7 @@ replay_ratio: 100
 gradient_steps: 100000
 checkpoint_interval: 1000
 save_checkpoints: True
-checkpoint_to_load: 57k
+checkpoint_to_load: 91k
 save_metrics: True
 
 nb_episodes_before_start: 5
@@ -17,7 +17,7 @@ num_interaction_episodes: 1
 dreamer:
   batch_size: 32
   batch_length: 64
-  imagination_horizon: 16
+  imagination_horizon: 12
 
   encoded_obs_size: 512
   recurrent_size: 200
@@ -31,9 +31,9 @@ dreamer:
   gradient_norm_type: 2
   gradient_clip: 100
 
-  entropy_scale: 0.0
+  entropy_scale: 0.0003
 
-  free_nats: 3.0
+  free_nats: 1.0
   kl_scale: 1.0
   pcont_scale: 10.0
 
