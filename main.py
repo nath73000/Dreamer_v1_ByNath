@@ -14,10 +14,27 @@ def parse_args():
         default="CartPoleSwingUp_Dreamer_v1",
         help="Nom du fichier config YAML, avec ou sans .yaml",
     )
+    parser.add_argument(
+        "--checkpoint",
+        default=None,
+        help="Suffixe du checkpoint a charger, par exemple 2k pour checkpoint/CartPoleSwingUp_debug_2k.pt",
+    )
+    parser.add_argument(
+        "--target-gradient-steps",
+        type=int,
+        default=None,
+        help="Nombre total de gradient steps a atteindre. Remplace config.gradient_steps.",
+    )
+    parser.add_argument(
+        "--additional-gradient-steps",
+        type=int,
+        default=None,
+        help="Nombre de gradient steps a ajouter apres le checkpoint charge.",
+    )
     return parser.parse_args()
 
 
-def main(config):
+def main(config, checkpoint_to_load=None, target_gradient_steps=None, additional_gradient_steps=None):
     try:
         from dm_control import suite
         from dm_control.suite.wrappers import pixels
@@ -44,19 +61,38 @@ def main(config):
 
     dreamer = Dreamer(observation_shape, action_size, config.dreamer, device)
 
-    if config.checkpoint_to_load:
-        checkpoint_to_load = os.path.join(config.folder_names.checkpoints_folder, f"{runName}_{config.checkpoint_to_load}")
+    checkpoint_suffix = checkpoint_to_load if checkpoint_to_load is not None else config.checkpoint_to_load
+    if checkpoint_suffix:
+        checkpoint_to_load = os.path.join(config.folder_names.checkpoints_folder, f"{runName}_{checkpoint_suffix}")
         checkpoint_path = f"{checkpoint_to_load}.pt"
         if os.path.isfile(checkpoint_path):
             dreamer.load_checkpoint(checkpoint_path)
+            print(f"Loaded checkpoint: {checkpoint_path}")
+            print(f"Resuming from gradient step {dreamer.total_gradient_steps}")
         else:
-            print(f"Checkpoint not found, starting from scratch: {checkpoint_path}")
+            raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
+
+    if additional_gradient_steps is not None and target_gradient_steps is not None:
+        raise ValueError("Use either --target-gradient-steps or --additional-gradient-steps, not both.")
+    if additional_gradient_steps is not None:
+        target_gradient_steps = dreamer.total_gradient_steps + additional_gradient_steps
+    elif target_gradient_steps is None:
+        target_gradient_steps = config.gradient_steps
+
+    print(f"Training target gradient step: {target_gradient_steps}")
+    if dreamer.total_gradient_steps >= target_gradient_steps:
+        print(
+            f"Nothing to train: current gradient step is {dreamer.total_gradient_steps}, "
+            f"target is {target_gradient_steps}."
+        )
+        return
 
     dreamer.environment_interaction(env_train, config.nb_episodes_before_start, config.seed)
 
-    iterations_nb = config.gradient_steps // config.replay_ratio 
-    for _ in range(iterations_nb):
-        for _ in range(config.replay_ratio):
+    while dreamer.total_gradient_steps < target_gradient_steps:
+        remaining_gradient_steps = target_gradient_steps - dreamer.total_gradient_steps
+        updates_this_iteration = min(config.replay_ratio, remaining_gradient_steps)
+        for _ in range(updates_this_iteration):
             sampled_data                        = dreamer.buffer.sample(dreamer.config.batch_size, dreamer.config.batch_length)
             initial_states, world_model_metrics = dreamer.world_model_training(sampled_data)
             behavior_metrics                    = dreamer.behavior_training(initial_states)
@@ -79,7 +115,12 @@ def main(config):
 if __name__ == "__main__":
     args = parse_args()
     config = load_config(args.config)
-    main(config)
+    main(
+        config,
+        checkpoint_to_load=args.checkpoint,
+        target_gradient_steps=args.target_gradient_steps,
+        additional_gradient_steps=args.additional_gradient_steps,
+    )
 
     # plotMetrics(
     # "metrics/CartPoleSwingUp_debug",

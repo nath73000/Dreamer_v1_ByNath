@@ -329,9 +329,20 @@ class Dreamer:
             print("imageio is not installed; skipping video save.")
             return
 
-        if not filename.endswith(".mp4"):
-            filename += ".mp4"
-        directory = os.path.dirname(filename)
+        mp4_filename = filename if filename.endswith(".mp4") else f"{filename}.mp4"
+        directory = os.path.dirname(mp4_filename)
         if directory:
             os.makedirs(directory, exist_ok=True)
-        imageio.mimsave(filename, frames, fps=30)
+        try:
+            imageio.mimsave(mp4_filename, frames, fps=30)
+        except Exception as mp4_error:
+            gif_filename = os.path.splitext(mp4_filename)[0] + ".gif"
+            try:
+                imageio.mimsave(gif_filename, frames, fps=30)
+                print(f"Could not save MP4 video ({mp4_error}); saved GIF instead: {gif_filename}")
+            except Exception as gif_error:
+                print(
+                    "Skipping video save. Install a video backend with "
+                    "`pip install imageio[ffmpeg]` or `conda install -c conda-forge imageio-ffmpeg`. "
+                    f"MP4 error: {mp4_error}. GIF error: {gif_error}."
+                )
