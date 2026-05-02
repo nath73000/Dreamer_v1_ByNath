@@ -2,3 +2,5 @@
 __pycache__
 videos
 checkpoint
+metrics
+environment_test

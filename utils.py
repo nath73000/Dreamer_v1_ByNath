@@ -205,3 +205,91 @@ def plotMetrics(filename, title="", savePath="metricsPlot", window=10):
     )
 
     fig.write_html(savePath)
+
+
+def plotRewardPrediction(filename, savePath="rewardPredictionPlot", title="Reward Prediction", window=10):
+    import pandas as pd
+    import plotly.graph_objects as pgo
+
+    if not filename.endswith(".csv"):
+        filename += ".csv"
+    if not savePath.endswith(".html"):
+        savePath += ".html"
+
+    directory = os.path.dirname(savePath)
+    if directory:
+        os.makedirs(directory, exist_ok=True)
+
+    data = pd.read_csv(filename)
+    x_column = "gradient_steps" if "gradient_steps" in data.columns else "gradientSteps"
+    env_steps_column = "env_steps" if "env_steps" in data.columns else "envSteps"
+    required_columns = [x_column, "total_reward", "imagined_rewards"]
+    missing_columns = [column for column in required_columns if column not in data.columns]
+    if missing_columns:
+        raise ValueError(f"Missing columns in {filename}: {missing_columns}")
+
+    if env_steps_column in data.columns:
+        step_delta = data[env_steps_column].diff()
+        valid_step_delta = step_delta[step_delta > 0]
+        default_step_delta = valid_step_delta.median() if not valid_step_delta.empty else 1.0
+        step_delta = step_delta.fillna(default_step_delta)
+        step_delta = step_delta.where(step_delta > 0, default_step_delta)
+    else:
+        step_delta = 1.0
+
+    actual_reward_per_step = data["total_reward"] / step_delta
+    predicted_reward_per_step = data["imagined_rewards"]
+
+    fig = pgo.Figure()
+    fig.add_trace(pgo.Scatter(
+        x=data[x_column],
+        y=actual_reward_per_step,
+        mode="lines",
+        name="Actual reward per step (raw)",
+        line=dict(color="rgba(148, 163, 184, 0.55)", width=1, dash="dot"),
+        visible="legendonly",
+    ))
+    fig.add_trace(pgo.Scatter(
+        x=data[x_column],
+        y=predicted_reward_per_step,
+        mode="lines",
+        name="Predicted reward per step (raw)",
+        line=dict(color="rgba(251, 191, 36, 0.55)", width=1, dash="dot"),
+        visible="legendonly",
+    ))
+    fig.add_trace(pgo.Scatter(
+        x=data[x_column],
+        y=actual_reward_per_step.rolling(window=window, min_periods=1).mean(),
+        mode="lines",
+        name=f"Actual reward per step (smoothed {window})",
+        line=dict(color="#38bdf8", width=3),
+    ))
+    fig.add_trace(pgo.Scatter(
+        x=data[x_column],
+        y=predicted_reward_per_step.rolling(window=window, min_periods=1).mean(),
+        mode="lines",
+        name=f"Predicted reward per step (smoothed {window})",
+        line=dict(color="#f59e0b", width=3),
+    ))
+
+    fig.update_layout(
+        title=dict(text=title, x=0.5, font=dict(size=30), yanchor="top"),
+        xaxis=dict(title="Gradient Steps", showgrid=True, zeroline=False),
+        yaxis=dict(title="Reward per Step", showgrid=True, zeroline=False),
+        template="plotly_dark",
+        height=900,
+        width=1500,
+        margin=dict(t=70, l=70, r=40, b=60),
+        legend=dict(
+            x=0.02,
+            y=0.98,
+            xanchor="left",
+            yanchor="top",
+            bgcolor="rgba(0,0,0,0.5)",
+            bordercolor="White",
+            borderwidth=1,
+            font=dict(size=12),
+        ),
+    )
+
+    fig.write_html(savePath)

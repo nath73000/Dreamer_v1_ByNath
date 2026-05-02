@@ -1,16 +1,16 @@
 environment_name: CartPoleSwingUp
-run_name: debug
+run_name: debugvideo
 seed: 13
 device: mps
 
 replay_ratio: 100
-gradient_steps: 100000
-checkpoint_interval: 1000
+gradient_steps: 200000
+checkpoint_interval: 100
 save_checkpoints: True
-checkpoint_to_load: 91k
+checkpoint_to_load: 142k
 save_metrics: True
 
-nb_episodes_before_start: 5
+nb_episodes_before_start: 10
 num_evaluation_episodes: 1
 num_interaction_episodes: 1
 
